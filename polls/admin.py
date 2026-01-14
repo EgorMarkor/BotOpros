@@ -3,7 +3,8 @@ from django.conf import settings
 import requests
 
 from .models import User, Poll, Answer
-from .ai.report import generate_ai_report
+from .ai.report import generate_parent_report_for_all
+from .ai.docx import build_docx_bytes
 
 
 # ======================================================
@@ -54,7 +55,7 @@ class AnswerInline(admin.TabularInline):
 # ACTION: AI-ОТЧЁТ → Telegram
 # ======================================================
 
-@admin.action(description="🤖 Сформировать AI-отчёт и отправить админу")
+@admin.action(description="🤖 Сформировать AI-отчёт по всем анкетам и отправить админу")
 def send_ai_report(modeladmin, request, queryset):
     admins = User.objects.filter(is_admin=True)
 
@@ -82,33 +83,48 @@ def send_ai_report(modeladmin, request, queryset):
         )
         return
 
-    for user in queryset:
+    try:
+        report_text = generate_parent_report_for_all()
+    except Exception as e:
+        modeladmin.message_user(
+            request,
+            f"❌ Ошибка генерации AI-отчёта: {e}",
+            level="error"
+        )
+        return
+
+    if not report_text:
+        modeladmin.message_user(
+            request,
+            "❌ Нет анкет родителей для анализа",
+            level="error"
+        )
+        return
+
+    report_docx = build_docx_bytes(report_text)
+    for admin_user in admins:
         try:
-            report_text = generate_ai_report(user)
+            requests.post(
+                f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendDocument",
+                data={
+                    "chat_id": admin_user.tg_id,
+                    "caption": "AI-отчёт по анкетам родителей (Word)",
+                },
+                files={
+                    "document": (
+                        "parent_report.docx",
+                        report_docx,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+                timeout=30,
+            )
         except Exception as e:
             modeladmin.message_user(
                 request,
-                f"❌ Ошибка генерации AI-отчёта: {e}",
+                f"❌ Ошибка отправки админу {admin_user.tg_id}: {e}",
                 level="error"
             )
-            continue
-
-        for admin_user in admins:
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendMessage",
-                    json={
-                        "chat_id": admin_user.tg_id,
-                        "text": report_text[:4000],
-                    },
-                    timeout=15,
-                )
-            except Exception as e:
-                modeladmin.message_user(
-                    request,
-                    f"❌ Ошибка отправки админу {admin_user.tg_id}: {e}",
-                    level="error"
-                )
 
     modeladmin.message_user(
         request,
