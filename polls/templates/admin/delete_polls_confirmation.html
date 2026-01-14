@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Вы уверены, что хотите удалить выбранные опросы?</h1>
+
+<p>Будут удалены следующие опросы:</p>
+
+<ul>
+  {% for obj in objects %}
+    <li>{{ obj }}</li>
+  {% endfor %}
+</ul>
+
+<form method="post">
+  {% csrf_token %}
+
+  {% for obj in objects %}
+    <input
+      type="hidden"
+      name="{{ action_checkbox_name }}"
+      value="{{ obj.pk }}"
+    >
+  {% endfor %}
+
+  <input type="hidden" name="confirm" value="yes">
+
+  <button type="submit" class="deletelink">
+    Да, удалить
+  </button>
+
+  <a href=".." class="button cancel-link">
+    Отмена
+  </a>
+</form>
+{% endblock %}
