@@ -1,5 +1,8 @@
 from django.contrib import admin
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
+from django.http import HttpResponseRedirect
+from django.urls import path, reverse
 import requests
 
 from .models import User, Poll, Answer
@@ -138,12 +141,31 @@ def send_ai_report(modeladmin, request, queryset):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
+    change_list_template = "admin/polls/user/change_list.html"
     list_display = ("tg_id", "role", "is_admin")
     list_filter = ("role", "is_admin")
     search_fields = ("tg_id",)
     ordering = ("tg_id",)
     inlines = [AnswerInline]
     actions = [send_ai_report]
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "generate-ai-report/",
+                self.admin_site.admin_view(self.generate_ai_report_view),
+                name="polls_user_generate_ai_report",
+            ),
+        ]
+        return custom_urls + urls
+
+    def generate_ai_report_view(self, request):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
+        send_ai_report(self, request, User.objects.none())
+        return HttpResponseRedirect(reverse("admin:polls_user_changelist"))
 
 
 # ======================================================
