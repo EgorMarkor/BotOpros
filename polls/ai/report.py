@@ -1,9 +1,14 @@
-from ..models import Answer
-from .prompts import PARENT_REPORT_PROMPT
 from django.conf import settings
 from openai import OpenAI
+from ..models import Answer
+from .prompts import PARENT_REPORT_PROMPT
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+def get_openai_client():
+    api_key = getattr(settings, "OPENAI_API_KEY", "")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not configured")
+    return OpenAI(api_key=api_key)
 
 
 def build_user_answers(user):
@@ -47,6 +52,7 @@ def build_parent_answers():
 def generate_ai_report(user):
     data = build_user_answers(user)
     prompt = PARENT_REPORT_PROMPT.format(data=data)
+    client = get_openai_client()
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",  # можно gpt-4o
@@ -67,6 +73,7 @@ def generate_parent_report_for_all():
         return ""
 
     prompt = PARENT_REPORT_PROMPT.format(data=data)
+    client = get_openai_client()
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",  # можно gpt-4o

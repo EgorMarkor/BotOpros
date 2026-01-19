@@ -14,12 +14,11 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 # Telegram Bot
 # ======================================================
 
-BOT_TOKEN = "8532414217:AAGp9-3NXeeFUw0QDblJipK5n6Q96Em8Xo4"
-OPENAI_API_KEY = "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"
-
-
-
+import os
 from pathlib import Path
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
