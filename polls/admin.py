@@ -142,9 +142,16 @@ def send_ai_report(modeladmin, request, queryset):
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     change_list_template = "admin/polls/user/change_list.html"
-    list_display = ("tg_id", "role", "is_admin")
-    list_filter = ("role", "is_admin")
-    search_fields = ("tg_id",)
+    list_display = (
+        "tg_id",
+        "full_name",
+        "phone_number",
+        "consent_personal_data",
+        "role",
+        "is_admin",
+    )
+    list_filter = ("role", "is_admin", "consent_personal_data")
+    search_fields = ("tg_id", "full_name", "phone_number")
     ordering = ("tg_id",)
     inlines = [AnswerInline]
     actions = [send_ai_report]

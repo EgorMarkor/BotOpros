@@ -1,5 +1,5 @@
 from django.conf import settings
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 from ..models import Answer
 from .prompts import PARENT_REPORT_PROMPT
 
@@ -8,6 +8,12 @@ def get_openai_client():
     api_key = getattr(settings, "OPENAI_API_KEY", "")
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not configured")
+    proxy = getattr(settings, "OPENAI_PROXY", "")
+    if proxy:
+        return OpenAI(
+            api_key=api_key,
+            http_client=DefaultHttpxClient(proxies=proxy),
+        )
     return OpenAI(api_key=api_key)
 
 
