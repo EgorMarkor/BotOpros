@@ -3,6 +3,9 @@ from django.db import models
 
 class User(models.Model):
     tg_id = models.BigIntegerField(unique=True)
+    full_name = models.CharField(max_length=255, null=True, blank=True)
+    phone_number = models.CharField(max_length=50, null=True, blank=True)
+    consent_personal_data = models.BooleanField(default=False)
 
     role = models.CharField(
         max_length=10,

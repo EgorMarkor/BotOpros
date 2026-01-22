@@ -39,6 +39,7 @@ dp = Dispatcher()
 user_progress = {}            # user_id -> index of poll
 waiting_text_answer = {}      # user_id -> poll_id
 waiting_scale_answer = {}     # user_id -> scale state
+waiting_profile = {}          # user_id -> profile step
 
 
 # ---------- ROLE KEYBOARD ----------
@@ -51,6 +52,49 @@ def role_keyboard():
     )
 
 
+def consent_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Согласен", callback_data="consent_yes")],
+            [InlineKeyboardButton(text="❌ Не согласен", callback_data="consent_no")],
+        ]
+    )
+
+
+def get_profile_step(user):
+    if not user.full_name:
+        return "full_name"
+    if not user.phone_number:
+        return "phone"
+    if not user.consent_personal_data:
+        return "consent"
+    return None
+
+
+async def prompt_profile_step(user_id: int, step: str):
+    if step == "full_name":
+        await bot.send_message(user_id, "Введите ФИО")
+    elif step == "phone":
+        await bot.send_message(user_id, "Введите номер телефона")
+    elif step == "consent":
+        await bot.send_message(
+            user_id,
+            "Согласен с обработкой персональных данных",
+            reply_markup=consent_keyboard(),
+        )
+
+
+async def continue_after_profile(user_id: int):
+    user = await sync_to_async(User.objects.get)(tg_id=user_id)
+    if not user.role:
+        await bot.send_message(user_id, "Кто вы?", reply_markup=role_keyboard())
+        return
+
+    user_progress[user_id] = 0
+    await bot.send_message(user_id, "Начинаем опрос 👇")
+    await send_next_poll(user_id)
+
+
 # ---------- /start ----------
 @dp.message(Command("start"))
 async def start_handler(message: Message):
@@ -58,12 +102,19 @@ async def start_handler(message: Message):
         tg_id=message.from_user.id
     )
 
+    profile_step = get_profile_step(user)
+    if profile_step:
+        waiting_profile[message.from_user.id] = profile_step
+        await prompt_profile_step(message.from_user.id, profile_step)
+        return
+
     if not user.role:
         await message.answer("Кто вы?", reply_markup=role_keyboard())
-    else:
-        user_progress[message.from_user.id] = 0
-        await message.answer("Начинаем опрос 👇")
-        await send_next_poll(message.from_user.id)
+        return
+
+    user_progress[message.from_user.id] = 0
+    await message.answer("Начинаем опрос 👇")
+    await send_next_poll(message.from_user.id)
 
 
 # ---------- /change_role ----------
@@ -93,6 +144,29 @@ async def role_callback(callback: CallbackQuery):
 
     await callback.message.edit_text("Роль сохранена ✅\nНачинаем опрос 👇")
     await send_next_poll(callback.from_user.id)
+
+
+@dp.callback_query(lambda c: c.data.startswith("consent_"))
+async def consent_callback(callback: CallbackQuery):
+    decision = callback.data.replace("consent_", "")
+    user_id = callback.from_user.id
+    user = await sync_to_async(User.objects.get)(tg_id=user_id)
+
+    if decision == "yes":
+        user.consent_personal_data = True
+        await sync_to_async(user.save)()
+        waiting_profile.pop(user_id, None)
+        await callback.message.edit_text("Спасибо! Согласие сохранено ✅")
+        await continue_after_profile(user_id)
+    else:
+        user.consent_personal_data = False
+        await sync_to_async(user.save)()
+        waiting_profile.pop(user_id, None)
+        await callback.message.edit_text(
+            "Без согласия мы не можем продолжить опрос."
+        )
+
+    await callback.answer()
 
 
 # ---------- SEND NEXT POLL ----------
@@ -185,6 +259,35 @@ async def poll_answer_handler(answer: PollAnswer):
 async def handle_text_and_scale(message: Message):
     user_id = message.from_user.id
     text = message.text
+
+    # ----- PROFILE FLOW -----
+    if user_id in waiting_profile:
+        step = waiting_profile[user_id]
+        user = await sync_to_async(User.objects.get)(tg_id=user_id)
+
+        if step == "full_name":
+            user.full_name = text.strip()
+            await sync_to_async(user.save)()
+            waiting_profile[user_id] = "phone"
+            await message.answer("Введите номер телефона")
+            return
+
+        if step == "phone":
+            user.phone_number = text.strip()
+            await sync_to_async(user.save)()
+            waiting_profile[user_id] = "consent"
+            await message.answer(
+                "Согласен с обработкой персональных данных",
+                reply_markup=consent_keyboard(),
+            )
+            return
+
+        if step == "consent":
+            await message.answer(
+                "Пожалуйста, подтвердите согласие кнопкой ниже.",
+                reply_markup=consent_keyboard(),
+            )
+            return
 
     # ----- SCALE GROUP -----
     if user_id in waiting_scale_answer:
