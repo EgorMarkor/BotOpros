@@ -3,6 +3,8 @@ import os
 import django
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiohttp_socks import ProxyConnector
 from aiogram.types import (
     Message,
     PollAnswer,
@@ -22,6 +24,8 @@ BOT_TOKEN = "8532414217:AAGp9-3NXeeFUw0QDblJipK5n6Q96Em8Xo4"
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not found in .env")
 
+SOCKS5_PROXY = os.getenv("SOCKS5_PROXY")
+
 
 # ---------- DJANGO ----------
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tg_poll_project.settings")
@@ -31,7 +35,12 @@ from polls.models import User, Poll, Answer  # noqa: E402
 
 
 # ---------- BOT ----------
-bot = Bot(token=BOT_TOKEN)
+if SOCKS5_PROXY:
+    proxy_connector = ProxyConnector.from_url(SOCKS5_PROXY)
+    proxy_session = AiohttpSession(connector=proxy_connector)
+    bot = Bot(token=BOT_TOKEN, session=proxy_session)
+else:
+    bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
